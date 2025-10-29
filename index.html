@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Cesium Liverpool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.120/Build/Cesium/Cesium.js"></script>
+
+  <style>
+    html, body, #cesiumContainer {
+      height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;
+      font-family: sans-serif;
+    }
+    #overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.9);
+      padding: 8px 12px;
+      border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      max-width: 320px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+  <div id="overlay">
+    <strong>Welcome to the Cesium Liverpool Viewer!</strong><br><br>
+    <div id="status">Initializing...</div>
+    <div style="margin-top:8px;">
+       <p>Explore the 3D tilesets for Liverpool. You can toggle layers below.</p>
+    </div>
+  </div>
+
+<script>
+  (async function () {
+    const statusEl = document.getElementById('status');
+
+    Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzMmFhMjEwNy0wMzg2LTQ2YjctYTQzYS01NDRjYTIzOGQzZWEiLCJpZCI6MzUwMzY5LCJpYXQiOjE3NjA1MzY2OTd9.qE1UEvuWZ8zE-L18UevG-KvhGx8HDR6nCJCuJpYAQBA";
+
+    // Create Cesium viewer
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrainProvider: await Cesium.createWorldTerrainAsync(),
+      timeline: false,
+      animation: false,
+      shouldAnimate: false,
+      baseLayerPicker: true,
+      selectionIndicator: false,
+    });
+
+    // Keep reference to terrain provider for toggling
+    const terrainProvider = await Cesium.createWorldTerrainAsync();
+    viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+
+    // --- Fly to Liverpool ---
+    viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(-2.9916, 53.4084, 5000) // Lon, Lat, Height (meters)
+    });
+
+
+    // --- Add UI to toggle terrain ---
+    const terrainToggleContainer = document.createElement('div');
+    terrainToggleContainer.style.marginTop = '8px';
+    terrainToggleContainer.innerHTML = '<strong>Toggle 3D (Recommended when using layers):</strong> ';
+
+    const toggleCheckbox = document.createElement('input');
+    toggleCheckbox.type = 'checkbox';
+    toggleCheckbox.id = 'toggle_terrain';
+    toggleCheckbox.checked = false;
+
+    const toggleLabel = document.createElement('label');
+    toggleLabel.htmlFor = 'toggle_terrain';
+    toggleLabel.textContent = ' Enable 3D Terrain';
+
+    terrainToggleContainer.appendChild(toggleCheckbox);
+    terrainToggleContainer.appendChild(toggleLabel);
+    document.getElementById('overlay').appendChild(terrainToggleContainer);
+
+    toggleCheckbox.addEventListener('change', () => {
+        if (toggleCheckbox.checked) {
+            viewer.terrainProvider = terrainProvider;
+        } else {
+            viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+        }
+    });
+
+    // --- PERFORMANCE TOGGLE UI ---
+    const perfContainer = document.createElement('div');
+    perfContainer.style.marginTop = '8px';
+    perfContainer.innerHTML = '<strong>Performance Mode:</strong> ';
+
+    const perfCheckbox = document.createElement('input');
+    perfCheckbox.type = 'checkbox';
+    perfCheckbox.id = 'toggle_perf_mode';
+    perfCheckbox.checked = false; // default: off (high quality)
+
+    const perfLabel = document.createElement('label');
+    perfLabel.htmlFor = 'toggle_perf_mode';
+    perfLabel.textContent = ' Enable Performance Mode';
+
+    perfContainer.appendChild(perfCheckbox);
+    perfContainer.appendChild(perfLabel);
+    document.getElementById('overlay').appendChild(perfContainer);
+
+    function setPerformanceMode(enabled) {
+      const scene = viewer.scene;
+      if (enabled) {
+        scene.globe.maximumScreenSpaceError = 4;
+        scene.globe.enableLighting = false;
+        scene.postProcessStages.fxaa.enabled = false;
+        scene.requestRenderMode = true;
+        scene.maximumRenderTimeChange = Infinity;
+        console.log("High performance mode enabled");
+      } else {
+        scene.globe.maximumScreenSpaceError = 2;
+        scene.globe.enableLighting = true;
+        scene.postProcessStages.fxaa.enabled = true;
+        scene.requestRenderMode = false;
+        console.log("High performance mode disabled");
+      }
+      viewer.scene.requestRender(); // refresh scene immediately
+    }
+
+    setPerformanceMode(false); // Initialize with default
+    perfCheckbox.addEventListener('change', () => {
+      setPerformanceMode(perfCheckbox.checked);
+    });
+
+    // --- Load Liverpool 3D Tilesets ---
+    
+    // !!! IMPORTANT: Update these URLs to point to your tileset.json files !!!
+    const tilesetDefs = [
+        { name: "North Liverpool", url: "http://127.0.0.1:8080/NE_Liverpool/tileset.json", tileset: null, isLoaded: false, isLoading: false },
+        { name: "South Liverpool", url: "http://127.0.0.1:8080/SE_Liverpool/tileset.json", tileset: null, isLoaded: false, isLoading: false },
+        { name: "North Wirral", url: "http://127.0.0.1:8080/NW_Liverpool/tileset.json", tileset: null, isLoaded: false, isLoading: false },
+        { name: "South Wirral", url: "http://127.0.0.1:8080/SW_Liverpool/tileset.json", tileset: null, isLoaded: false, isLoading: false }
+    ];
+
+    const tilesetToggleContainer = document.createElement('div');
+    tilesetToggleContainer.style.marginTop = '8px';
+    tilesetToggleContainer.innerHTML = '<strong>Toggle 3D Tiles:</strong><br>';
+
+    // Add simple CSS spinner
+    const style = document.createElement('style');
+    style.textContent = `
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid #ccc;
+        border-top-color: #555;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: middle;
+        margin-left: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    `;
+    document.head.appendChild(style);
+
+    // For each layer, create checkbox + spinner + label
+    tilesetDefs.forEach(layer => {
+      const id = 'toggle_' + layer.name.replace(/\W/g, '_');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = id;
+      checkbox.checked = false; // start off
+      checkbox.style.marginRight = '4px';
+
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = ' ' + layer.name;
+
+      const spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      spinner.style.display = 'none';
+
+      // Handle toggle
+      checkbox.addEventListener('change', async () => {
+        if (checkbox.checked) {
+          if (!layer.isLoaded && !layer.isLoading) {
+            layer.isLoading = true;
+            spinner.style.display = 'inline-block';
+            checkbox.disabled = true;
+            statusEl.textContent = `Loading ${layer.name}...`;
+
+            try {
+              // Load the 3D Tileset
+              const tileset = await Cesium.Cesium3DTileset.fromUrl(layer.url);
+              viewer.scene.primitives.add(tileset);
+              
+              layer.tileset = tileset;
+              layer.isLoaded = true;
+              statusEl.textContent = `Loaded ${layer.name}`;
+            } catch (err) {
+              console.error('Error loading 3D Tileset:', layer.url, err);
+              checkbox.checked = false;
+              statusEl.textContent = `Failed to load ${layer.name}`;
+            } finally {
+              spinner.style.display = 'none';
+              checkbox.disabled = false;
+              layer.isLoading = false;
+            }
+          } else if (layer.isLoaded) {
+            // Just show existing one
+            layer.tileset.show = true;
+          }
+        } else {
+          // Unload when unchecked
+          if (layer.isLoaded && layer.tileset) {
+            viewer.scene.primitives.remove(layer.tileset);
+            layer.tileset = null;
+            layer.isLoaded = false;
+            statusEl.textContent = `Unloaded ${layer.name}`;
+          }
+        }
+      });
+
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.gap = '4px';
+
+      wrapper.appendChild(checkbox);
+      wrapper.appendChild(label);
+      wrapper.appendChild(spinner);
+      tilesetToggleContainer.appendChild(wrapper);
+    });
+
+    // "Deselect All" and "Select All" buttons
+    const deselectBtn = document.createElement('button');
+    deselectBtn.textContent = 'Deselect All Layers';
+    deselectBtn.style.marginTop = '8px';
+    deselectBtn.style.display = 'block';
+    deselectBtn.addEventListener('click', () => {
+      tilesetDefs.forEach(layer => {
+        const id = 'toggle_' + layer.name.replace(/\W/g, '_');
+        const checkbox = document.getElementById(id);
+        if (checkbox && checkbox.checked) {
+          checkbox.checked = false;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
+    const selectBtn = document.createElement('button');
+    selectBtn.textContent = 'Select All Layers';
+    selectBtn.style.marginTop = '4px';
+    selectBtn.style.display = 'block';
+    selectBtn.addEventListener('click', () => {
+      tilesetDefs.forEach(layer => {
+        const id = 'toggle_' + layer.name.replace(/\W/g, '_');
+        const checkbox = document.getElementById(id);
+        if (checkbox && !checkbox.checked) {
+          checkbox.checked = true;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
+    tilesetToggleContainer.appendChild(deselectBtn);
+    tilesetToggleContainer.appendChild(selectBtn);
+
+    document.getElementById('overlay').appendChild(tilesetToggleContainer);
+
+    // Geo Json Section Start
+    // Load data here
+    const geojsonUrls = [
+      "resources/Education_Facilities_(Points).geojson",
+      "resources/Financial_Services_(Points).geojson",
+      "resources/Health_Facilities_(Points).geojson",
+      "resources/Points_of_Interest.geojson",
+      "resources/Railways_(Lines).geojson",
+      "resources/Roads_(Lines).geojson",
+      "resources/Sea_Ports_(Points).geojson",
+      "resources/Waterways(Polygons).geojson",
+      "resources/Waterways_(Lines).geojson",
+      "resources/Westminster_Wards_Liverpool.json",
+      "resources/Westminster_Wards_Wirral.json"
+    ]
+
+    const geojsonLayers = geojsonUrls.map(url => ({
+      name: url.split('/').pop(),
+      url,
+      ds: null, // will be loaded on demand
+      isLoaded: false,
+      isLoading: false,
+    }));
+
+    const toggleContainer = document.createElement('div');
+    toggleContainer.style.marginTop = '8px';
+    toggleContainer.innerHTML = '<strong>Toggle Layers:</strong><br>';
+
+    // Add simple CSS spinner
+    const styleGeo = document.createElement('style');
+    style.textContent = `
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid #ccc;
+        border-top-color: #555;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: middle;
+        margin-left: 6px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    `;
+    document.head.appendChild(style);
+
+    // For each layer, create checkbox + spinner + label
+    geojsonLayers.forEach(layer => {
+      const id = 'toggle_' + layer.name.replace(/\W/g, '_');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = id;
+      checkbox.checked = false; // start off
+      checkbox.style.marginRight = '4px';
+
+      const label = document.createElement('label');
+      label.htmlFor = id;
+      label.textContent = ' ' + layer.name.replace(/(\.geojson|\.json)$/i, '').replace(/_/g, ' ');
+
+      const spinner = document.createElement('span');
+      spinner.className = 'spinner';
+      spinner.style.display = 'none';
+
+      // Handle toggle
+      checkbox.addEventListener('change', async () => {
+        if (checkbox.checked) {
+          if (!layer.isLoaded && !layer.isLoading) {
+            layer.isLoading = true;
+            spinner.style.display = 'inline-block';
+            checkbox.disabled = true;
+            statusEl.textContent = `Loading ${layer.name}...`;
+
+            try {
+              const ds = await Cesium.GeoJsonDataSource.load(layer.url, { clampToGround: true });
+              viewer.dataSources.add(ds);
+              layer.ds = ds;
+              layer.isLoaded = true;
+              statusEl.textContent = `Loaded ${layer.name}`;
+            } catch (err) {
+              console.error('Error loading GeoJSON:', layer.url, err);
+              checkbox.checked = false;
+              statusEl.textContent = `Failed to load ${layer.name}`;
+            } finally {
+              spinner.style.display = 'none';
+              checkbox.disabled = false;
+              layer.isLoading = false;
+            }
+          } else if (layer.isLoaded) {
+            // Just show existing one
+            layer.ds.show = true;
+          }
+        } else {
+          // Unload when unchecked
+          if (layer.isLoaded && layer.ds) {
+            viewer.dataSources.remove(layer.ds, true);
+            layer.ds = null;
+            layer.isLoaded = false;
+            statusEl.textContent = `Unloaded ${layer.name}`;
+          }
+        }
+      });
+
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.gap = '4px';
+
+      wrapper.appendChild(checkbox);
+      wrapper.appendChild(label);
+      wrapper.appendChild(spinner);
+      toggleContainer.appendChild(wrapper);
+    });
+
+    // "Deselect All" and "Select All" buttons
+    const deselectBtnGeo = document.createElement('button');
+    deselectBtn.textContent = 'Deselect All Layers';
+    deselectBtn.style.marginTop = '8px';
+    deselectBtn.style.display = 'block';
+    deselectBtn.addEventListener('click', () => {
+      geojsonLayers.forEach(layer => {
+        const id = 'toggle_' + layer.name.replace(/\W/g, '_');
+        const checkbox = document.getElementById(id);
+        if (checkbox && checkbox.checked) {
+          checkbox.checked = false;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
+    const selectBtnGeo = document.createElement('button');
+    selectBtn.textContent = 'Select All Layers';
+    selectBtn.style.marginTop = '4px';
+    selectBtn.style.display = 'block';
+    selectBtn.addEventListener('click', () => {
+      geojsonLayers.forEach(layer => {
+        const id = 'toggle_' + layer.name.replace(/\W/g, '_');
+        const checkbox = document.getElementById(id);
+        if (checkbox && !checkbox.checked) {
+          checkbox.checked = true;
+          checkbox.dispatchEvent(new Event('change'));
+        }
+      });
+    });
+
+    toggleContainer.appendChild(deselectBtn);
+    toggleContainer.appendChild(selectBtn);
+
+    document.getElementById('overlay').appendChild(toggleContainer);
+
+
+    let lastSelected = null;
+
+    viewer.selectedEntityChanged.addEventListener(entity => {
+        // Reset previous selection
+        if (lastSelected) {
+            if (Cesium.defined(lastSelected.polygon)) {
+                lastSelected.polygon.material = lastSelected.originalColor;
+            }
+            if (Cesium.defined(lastSelected.polyline)) {
+                lastSelected.polyline.material = lastSelected.originalMaterial;
+            }
+            if (Cesium.defined(lastSelected.billboard)) {
+                lastSelected.billboard.color = lastSelected.originalColor;
+                lastSelected.billboard.pixelSize = lastSelected.originalSize;
+                lastSelected.billboard.image = lastSelected.originalImage;
+                lastSelected.billboard.scale = lastSelected.originalScale;
+            }
+            lastSelected = null;
+        }
+
+        if (!entity) return; // nothing selected
+
+        lastSelected = entity;
+
+        // Polygons
+        if (Cesium.defined(entity.polygon)) {
+            entity.originalColor = entity.polygon.material;
+            entity.polygon.material = Cesium.Color.ORANGE.withAlpha(0.8); // color when selected
+        }
+
+        // Polylines
+        if (Cesium.defined(entity.polyline)) {
+            entity.originalMaterial = entity.polyline.material;
+            entity.polyline.material = new Cesium.PolylineOutlineMaterialProperty({
+                color: Cesium.Color.ORANGE,
+                outlineColor: Cesium.Color.ORANGE,
+                outlineWidth: 2
+            });
+        }
+
+        if (Cesium.defined(entity.billboard)) {
+          console.log('Billboard selected:', entity);
+          entity.originalImage = entity.billboard.image;
+          entity.originalScale = entity.billboard.scale;
+
+          // Change the color using PinBuilder (orange pin)
+          const pinBuilder = new Cesium.PinBuilder();
+          const newPin = pinBuilder.fromColor(Cesium.Color.ORANGE, 48); // 48 = pixel height
+
+          entity.billboard.image = newPin;
+          entity.billboard.scale = 1.5; // increase size by 50%
+      }
+    });
+    // Geo Json Section End
+    
+    statusEl.textContent = 'Ready.';
+
+  })();
+</script>
+</body>
+</html>

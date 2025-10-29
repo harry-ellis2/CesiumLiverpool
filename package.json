@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "cesium": "^1.134.1",
+    "dotenv": "^17.2.3"
+  }
+}
