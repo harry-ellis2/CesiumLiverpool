@@ -51,6 +51,7 @@
       shouldAnimate: false,
       baseLayerPicker: true,
       selectionIndicator: false,
+      navigationHelpButton: false,
     });
 
     // Keep reference to terrain provider for toggling
@@ -115,6 +116,31 @@
         scene.postProcessStages.fxaa.enabled = false;
         scene.requestRenderMode = true;
         scene.maximumRenderTimeChange = Infinity;
+
+        viewer.scene.requestRenderMode = true;
+        viewer.scene.maximumRenderTimeChange = Infinity;
+        viewer.scene.globe.maximumScreenSpaceError = 8; // increase for more performance
+        viewer.scene.globe.depthTestAgainstTerrain = true;
+        viewer.scene.fog.enabled = true;
+        viewer.scene.fog.density = 0.0002;
+
+        tileset.maximumScreenSpaceError = 8; // default ~16, lower = higher quality
+        tileset.skipLevelOfDetail = true;
+        tileset.baseScreenSpaceError = 1024;
+        tileset.skipScreenSpaceErrorFactor = 8;
+        tileset.skipLevels = 1;
+        tileset.immediatelyLoadDesiredLevelOfDetail = false;
+        tileset.loadSiblings = false;
+
+        viewer.scene.globe.enableLighting = false;
+        viewer.shadows = false;
+        viewer.scene.fog.enabled = false;
+        viewer.scene.globe.showGroundAtmosphere = false;
+        viewer.scene.skyAtmosphere.show = false;
+        viewer.scene.skyBox.show = false;
+        viewer.scene.sun.show = false;
+        viewer.scene.moon.show = false;
+
         console.log("High performance mode enabled");
       } else {
         scene.globe.maximumScreenSpaceError = 2;
